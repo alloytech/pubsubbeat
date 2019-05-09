@@ -16,6 +16,7 @@ package beater
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/elastic/beats/libbeat/beat"
@@ -120,10 +121,17 @@ func (bt *Pubsubbeat) Run(b *beat.Beat) error {
 					}
 				}
 			} else {
-				var jsonData interface{}
+				var jsonData common.MapStr
 				unmarshalErr = json.Unmarshal(m.Data, &jsonData)
 				if unmarshalErr == nil {
-					eventMap["json"] = jsonData
+					for k, v := range jsonData {
+						if k == "jsonPayload" {
+							updatedMap := bt.deserializeJsonValues(v)
+							eventMap[k] = updatedMap
+						} else {
+							eventMap[k] = v
+						}
+					}
 				}
 			}
 
@@ -155,6 +163,21 @@ func (bt *Pubsubbeat) Run(b *beat.Beat) error {
 	}
 
 	return nil
+}
+
+func (bt *Pubsubbeat) deserializeJsonValues(input interface{}) common.MapStr {
+	var interfaceByString = input.(map[string]interface{})
+	var unmarshalErr error
+	for k, v := range interfaceByString {
+		if strings.HasPrefix(v.(string), "{\"") {
+			var deserializedJson common.MapStr
+			unmarshalErr = json.Unmarshal([]byte(v.(string)), &deserializedJson)
+			if unmarshalErr != nil {
+				interfaceByString[k] = deserializedJson
+			}
+		}
+	}
+	return interfaceByString
 }
 
 func (bt *Pubsubbeat) Stop() {
